@@ -1,25 +1,58 @@
-function Execute-Query {
-    # Parameter help description
+
+# Param
+# (           
+#     [Parameter(ValueFromPipeline = $True, Mandatory = $False)] 
+#     [string] $Source_SqlServer = "JSHOME",
+#     [Parameter(ValueFromPipeline = $True, Mandatory = $False)] 
+#     [string] $Target_SqlServer = "JSHOME",
+#     [Parameter(ValueFromPipeline = $True, Mandatory = $False)]     
+#     [string] $Source_Database = "ICareMVCMaster",
+#     [Parameter(ValueFromPipeline = $True, Mandatory = $False)]     
+#     [string] $Target_Database = "New_ICareMVCMaster"
+# )
+
+$Source_SqlServer = 'JSHOME'
+$Target_SqlServer = 'JSHome'
+$Source_DbName = 'ICareMVCMaster'
+$Target_DbName = 'New_ICareMVCMaster'
+
+function ExecuteQuery {
+    ##Parameter help description
     [CmdletBinding()]
     Param
-    ( 
-        
-        [Parameter(ValueFromPipeline=$True,Mandatory=$False)] 
-        [string] $SqlServer="JSHOME",
-        [Parameter(ValueFromPipeline=$True,Mandatory=$False)] 
-        [string] $Database = "ICareMVCMaster",
-        
-        [Parameter(ValueFromPipeline=$True,Mandatory=$False)] 
-        [string] $SqlStatement ="Select * from HashKeyTest",
+    (         
+        [Parameter(Mandatory = $False)] 
+        [string] $SqlServer,
+        [Parameter(Mandatory = $False)] 
+        [string] $Database ,        
+        [Parameter(Mandatory = $False)] 
+        [string] $SqlStatement ,
         #[ValidateNotNullOrEmpty()] 
-        [Parameter(ValueFromPipeline=$True,Mandatory=$False)] 
-        [string] $OutFileName ="C:\temp\ExecuteReader_HeshKeyTest.csv"
+        [Parameter(Mandatory = $False)] 
+        [string] $OutputFileName 
     )
-    #$ErrorActionPreference = "Stop"
-    $VerbosePreference ="Verbose"
 
-    $conSring="Data Source=$SqlServer;Initial Catalog=$Database;Integrated Security=true;"
-    Write-Host  $conSring
+    $ParameterList = (Get-Command -Name $MyInvocation.InvocationName).Parameters;
+    foreach ($key in $ParameterList.keys)
+    {
+        $var = Get-Variable -Name $key -ErrorAction SilentlyContinue;
+        if($var)
+        {
+            write-host "$($var.name) > $($var.value)"
+
+            if(-not $var.value){
+                return " input value is missing for "+ $var.name +" value received as ["+ $var.value +"]"
+                Exit ;
+            }
+        }
+    }
+
+
+    #$ErrorActionPreference = "Stop"
+    #$VerbosePreference = "Verbose"
+
+    $conSring = "Data Source=$SqlServer;Initial Catalog=$Database;Integrated Security=true;"
+    Write-Host  "ConString :$conSring"
     $sqlConnection = New-Object System.Data.SqlClient.SqlConnection $conSring
     #$sqlConnection.ConnectionString = "Server=$SqlServer;Database=$Database;Integrated Security=True"
     $sqlConnection.Open()
@@ -29,45 +62,51 @@ function Execute-Query {
     
     $sqlAdapter = New-Object System.Data.SqlClient.SqlDataAdapter
     $sqlAdapter.SelectCommand = $sqlCmd
-    Write-Host 'will write output to ' $OutFileName
     
-    $file = New-Object System.IO.StreamWriter -ArgumentList ([IO.File]::Open($OutFileName,"Open"));
-    $file.BaseStream.SetLength(0)
-    $file.Write("This is a test!")
-    try{ 
-        $reader =  $sqlCmd.ExecuteReader()
-        $recordsCount  =0;
-        while ($reader.Read()) {
-        $record =  $reader["ID"].ToString() +','+ $reader["HashKey"].ToString() 
-        $file.Writeline($record);
-        $recordsCount +=1;
+    Write-Host "SqlCommand: $SqlStatement"
+    
 
-         #Write-Host  $recordsCount  + "Reading  >"  $record
+    Write-Host 'will write output to ' $OutputFileName
+    $file = New-Object System.IO.StreamWriter -ArgumentList ([IO.File]::Open($OutputFileName, "OpenOrCreate"));
+    $file.BaseStream.SetLength(0)
+    $file.Write("KEYS, HASH")
+    try { 
+        $reader = $sqlCmd.ExecuteReader()
+        $recordsCount = 0;
+        while ($reader.Read()) {
+            $record = $reader["Keys"].ToString() + ',' + $reader["Hash"].ToString() 
+            $file.Writeline($record);
+            $recordsCount += 1;
+
+            #Write-Host  $recordsCount  + "Reading  >"  $record
         }
-        Write-Host $recordsCount 'Records Saved to ' $outfilePath
+        Write-Host $recordsCount 'Records Saved to ' $OutputFileName
 
     }
-    finally{
+    catch{
+       Write-Error "Error in ExecuteQuery:"+$_
+    }
+    finally {
         # Clean up
         $file.Dispose()
         $sqlCmd.Dispose()
         $sqlConnection.Dispose()
     }
 }
-function Get-DataTable{
+function Get-DataTable {
     # Parameter help description
     [CmdletBinding()]
     Param
     (         
-        [Parameter(ValueFromPipeline=$True,Mandatory=$True)] 
-        [string] $SqlServer="JSHOME",
-        [Parameter(ValueFromPipeline=$True,Mandatory=$True)] 
-        [string] $Database = "ICareMVCMaster",        
-        [Parameter(ValueFromPipeline=$True,Mandatory=$True)] 
-        [string] $QueryText ="Select * from HashKeyTest"        
+        [Parameter(ValueFromPipeline = $True, Mandatory = $True)] 
+        [string] $SqlServer,
+        [Parameter(ValueFromPipeline = $True, Mandatory = $True)] 
+        [string] $Database ,        
+        [Parameter(ValueFromPipeline = $True, Mandatory = $True)] 
+        [string] $QueryText  
     )
 
-    try{ 
+    try { 
         # Configure connection string
         $con = New-Object System.Data.SqlClient.SqlConnection("Data Source=$SqlServer;Integrated Security=true;Initial Catalog=$Database");
         # Create two sql statements for the tables
@@ -81,7 +120,7 @@ function Get-DataTable{
         [System.Data.DataTable]$table = $resultset1.Tables[0];
         return $table    
     }
-    finally{
+    finally {
         # Clean up
         $data_adap.Dispose();
         $con.Close();
@@ -93,7 +132,7 @@ function Get-DataTable{
 
 #Execute-Query  
 
-$TableRowsCountAndKeysColumnsQuery  =@"
+$TableRowsCountAndKeysColumnsQuery = @"
 
 SELECT tbl.DataBase_Name, tbl.Schema_Name, tbl.Table_Name , tbl.RowsCount, tbl.Key_Columns , tbl.DataSize 
 , 'select '+CASE WHEN isnull(tbl.Key_Columns,'')='' THEN '0' ELSE replace(tbl.Key_Columns ,'||',',') end +' AS keys, CAST(hashbytes(''MD5'',(SELECT t.* FROM (VALUES(NULL))foo(bar)FOR xml auto)) AS bigint) AS [Hash]  FROM '+tbl.DataBase_Name+'.'+tbl.Schema_Name+'.'+tbl.Table_Name+' t ;' as Query
@@ -132,28 +171,90 @@ $TableEntries = Get-DataTable -SqlServer 'JSHOME' -Database "ICareMVCMaster" -Qu
 #     } 
 #     write-host  $item
 # }
- $indexNum =0;
-$obj = $TableEntries | ForEach-Object {
+$indexNum = 0;
+$TablesToMatch = $TableEntries | ForEach-Object {
   
     $keys = [System.String] $_.Key_Columns
-    $indexNum +=1;
-    if(-not $keys ){        
-        $keys =$indexNum
+    
+    if (-not $keys ) {        
+        $indexNum += 1;
+        $keys = $indexNum
     }
     New-Object -TypeName PSObject -Property @{
-      "DataBase_Name"   = [System.String] $_.DataBase_Name
-      "Schema_Name"     = [System.String] $_.Schema_Name
-      "Table_Name"      = [System.String] $_.Table_Name
-      "RowsCount"       = [System.String] $_.RowsCount
-      "Keys_Columns"    = [System.String] $_.Key_Columns
-      "Query"           = [System.String] $_.Query
-    }}
+        "DataBaseName" = [System.String] $_.DataBase_Name
+        "SchemaName"   = [System.String] $_.Schema_Name
+        "TableName"    = [System.String] $_.Table_Name
+        "RowsCount"    = [System.String] $_.RowsCount
+        "KeysColumns"  = [System.String] $_.Key_Columns
+        "Query"        = [System.String] $_.Query
+    } }
 
-    Write-host 'Custom PS object '
-    $obj |Format-Table *
+Write-host 'TablesToMatch output '
+$TablesToMatch | Format-Table *
 
 
-$HashKeyQueryForTable = @"
-SELECT t.$KeyColumns,hashbytes('MD5',(SELECT t.*FROM ( VALUES(NULL))foo(bar)FOR xml auto)) AS [Hash] FROM $dbName.$schemaname.$TableName AS t;
-"@
+# foreach ($r in $TablesToMatch) {     
+#     $queryText = '"' + $r.Query + '"'
+#     $tableName = '"' + $r.TableName + '"'
+#     Write-Host $queryText
+#     Write-Host $tableName
+#     Write-Host $r.GetType()
 
+#     ExecuteQuery  -SqlServer $Source_SqlServer `
+#         -Database $Source_DbName `
+#         -SqlStatement $queryText `
+#         -OutFileName 'E:\Temp\Source_'+$r.TableName;
+
+#     ExecuteQuery  -SqlServer $Target_SqlServer  `
+#         -Database $Target_DbName `
+#         -SqlStatement $queryText `
+#         -OutFileName 'E:\Temp\Target_'+$r.TableName;
+# }
+
+Function Compare-ObjectProperties {
+    Param(
+        [PSObject]$ReferenceObject,
+        [PSObject]$DifferenceObject 
+    )
+    $objprops = $ReferenceObject | Get-Member -MemberType Property,NoteProperty | % Name
+    $objprops += $DifferenceObject | Get-Member -MemberType Property,NoteProperty | % Name
+    $objprops = $objprops | Sort | Select -Unique
+    $diffs = @()
+    foreach ($objprop in $objprops) {
+        $diff = Compare-Object $ReferenceObject $DifferenceObject -Property $objprop
+        if ($diff) {            
+            $diffprops = @{
+                PropertyName=$objprop
+                RefValue=($diff | ? {$_.SideIndicator -eq '<='} | % $($objprop))
+                DiffValue=($diff | ? {$_.SideIndicator -eq '=>'} | % $($objprop))
+            }
+            $diffs += New-Object PSObject -Property $diffprops
+        }        
+    }
+    if ($diffs) {return ($diffs | Select PropertyName,RefValue,DiffValue)}     
+}
+
+
+foreach ($r in $TablesToMatch) {        
+    $qry = $r.Query
+    $tableName = $r.TableName
+    $sourceOutFilename = "E:\Temp\$tableName.src"
+ 
+     
+        ExecuteQuery  -SqlServer $Source_SqlServer `
+            -Database $Source_DbName `
+            -SqlStatement $qry `
+            -OutputFileName $sourceOutFilename;
+
+        $targetOutFilename = "E:\Temp\$tableName.trg"
+
+        ExecuteQuery  -SqlServer $Target_SqlServer  `
+            -Database $Target_DbName `
+            -SqlStatement $qry `
+            -OutputFileName $targetOutFilename;
+    
+}
+
+
+##Compare objects 
+#Compare-Object -ReferenceObject $(Get-Content E:\Temp\HashKeyTest.src) -DifferenceObject $(Get-Content E:\temp\HashKeyTest.trg)
