@@ -33,15 +33,13 @@ function ExecuteQuery {
     )
 
     $ParameterList = (Get-Command -Name $MyInvocation.InvocationName).Parameters;
-    foreach ($key in $ParameterList.keys)
-    {
+    foreach ($key in $ParameterList.keys) {
         $var = Get-Variable -Name $key -ErrorAction SilentlyContinue;
-        if($var)
-        {
+        if ($var) {
             write-host "$($var.name) > $($var.value)"
 
-            if(-not $var.value){
-                return " input value is missing for "+ $var.name +" value received as ["+ $var.value +"]"
+            if (-not $var.value) {
+                return " input value is missing for " + $var.name + " value received as [" + $var.value + "]"
                 Exit ;
             }
         }
@@ -69,7 +67,7 @@ function ExecuteQuery {
     Write-Host 'will write output to ' $OutputFileName
     $file = New-Object System.IO.StreamWriter -ArgumentList ([IO.File]::Open($OutputFileName, "OpenOrCreate"));
     $file.BaseStream.SetLength(0)
-    $file.Write("KEYS, HASH")
+    $file.WriteLine("KEYS, HASH")
     try { 
         $reader = $sqlCmd.ExecuteReader()
         $recordsCount = 0;
@@ -83,8 +81,8 @@ function ExecuteQuery {
         Write-Host $recordsCount 'Records Saved to ' $OutputFileName
 
     }
-    catch{
-       Write-Error "Error in ExecuteQuery:"+$_
+    catch {
+        Write-Error "Error in ExecuteQuery:"+$_
     }
     finally {
         # Clean up
@@ -129,13 +127,18 @@ function Get-DataTable {
 }
 
 
+# $selectedTables =@('HashKeyOrdered');
+# #Execute-Query  
+# $SelectedTablesClause = ''
+# if( $selectedTables){
 
-#Execute-Query  
+#     $SelectedTablesClause =' tbl.Table_Name in ('+ $selectedTables | ForEach-Object {''+$_.ToString() +''    }
+# }"$SelectedTablesClause"
 
 $TableRowsCountAndKeysColumnsQuery = @"
 
 SELECT tbl.DataBase_Name, tbl.Schema_Name, tbl.Table_Name , tbl.RowsCount, tbl.Key_Columns , tbl.DataSize 
-, 'select '+CASE WHEN isnull(tbl.Key_Columns,'')='' THEN '0' ELSE replace(tbl.Key_Columns ,'||',',') end +' AS keys, CAST(hashbytes(''MD5'',(SELECT t.* FROM (VALUES(NULL))foo(bar)FOR xml auto)) AS bigint) AS [Hash]  FROM '+tbl.DataBase_Name+'.'+tbl.Schema_Name+'.'+tbl.Table_Name+' t ;' as Query
+, 'select '+CASE WHEN isnull(tbl.Key_Columns,'')='' THEN '0' ELSE replace(tbl.Key_Columns ,'||',',') end +' AS keys, CAST(hashbytes(''MD5'',(SELECT t.* FROM (VALUES(NULL))foo(bar)FOR xml auto)) AS bigint) AS [Hash]  FROM '+tbl.Schema_Name+'.'+tbl.Table_Name+' t ;' as Query
 FROM (
 SELECT DB_NAME() AS DataBase_Name, s.Name AS Schema_Name, t.Name AS Table_Name, t.object_id ,p.rows  AS RowsCount ,
 	   Cast(cast(round((sum(a.total_pages) *8)/1024.0 ,2) as numeric(18,2)) as varchar(50))+'mb' as DataSize,
@@ -155,8 +158,7 @@ WHERE t.name NOT LIKE 'DT%'
 AND t.is_ms_shipped = 0 AND i.object_id >255
 GROUP BY s.name, t.name, p.rows, t.object_id 
 ) tbl
-ORDER BY tbl.RowsCount DESC 
-
+where tbl.Key_Columns is not null 
 "@
 
 $TableEntries = Get-DataTable -SqlServer 'JSHOME' -Database "ICareMVCMaster" -QueryText $TableRowsCountAndKeysColumnsQuery
@@ -203,12 +205,12 @@ $TablesToMatch | Format-Table *
 #     ExecuteQuery  -SqlServer $Source_SqlServer `
 #         -Database $Source_DbName `
 #         -SqlStatement $queryText `
-#         -OutFileName 'E:\Temp\Source_'+$r.TableName;
+#         -OutFileName 'C:\Temp\Source_'+$r.TableName;
 
 #     ExecuteQuery  -SqlServer $Target_SqlServer  `
 #         -Database $Target_DbName `
 #         -SqlStatement $queryText `
-#         -OutFileName 'E:\Temp\Target_'+$r.TableName;
+#         -OutFileName 'C:\Temp\Target_'+$r.TableName;
 # }
 
 Function Compare-ObjectProperties {
@@ -216,45 +218,80 @@ Function Compare-ObjectProperties {
         [PSObject]$ReferenceObject,
         [PSObject]$DifferenceObject 
     )
-    $objprops = $ReferenceObject | Get-Member -MemberType Property,NoteProperty | % Name
-    $objprops += $DifferenceObject | Get-Member -MemberType Property,NoteProperty | % Name
+    $objprops = $ReferenceObject | Get-Member -MemberType Property, NoteProperty | % Name
+    $objprops += $DifferenceObject | Get-Member -MemberType Property, NoteProperty | % Name
     $objprops = $objprops | Sort | Select -Unique
     $diffs = @()
     foreach ($objprop in $objprops) {
         $diff = Compare-Object $ReferenceObject $DifferenceObject -Property $objprop
         if ($diff) {            
             $diffprops = @{
-                PropertyName=$objprop
-                RefValue=($diff | ? {$_.SideIndicator -eq '<='} | % $($objprop))
-                DiffValue=($diff | ? {$_.SideIndicator -eq '=>'} | % $($objprop))
+                PropertyName = $objprop
+                RefValue     = ($diff | ? { $_.SideIndicator -eq '<=' } | % $($objprop))
+                DiffValue    = ($diff | ? { $_.SideIndicator -eq '=>' } | % $($objprop))
             }
             $diffs += New-Object PSObject -Property $diffprops
         }        
     }
-    if ($diffs) {return ($diffs | Select PropertyName,RefValue,DiffValue)}     
+    if ($diffs) { return ($diffs | Select PropertyName, RefValue, DiffValue) }     
 }
 
 
 foreach ($r in $TablesToMatch) {        
     $qry = $r.Query
     $tableName = $r.TableName
-    $sourceOutFilename = "E:\Temp\$tableName.src"
+    $sourceOutFilename = "C:\Temp\$tableName.src"
  
      
-        ExecuteQuery  -SqlServer $Source_SqlServer `
-            -Database $Source_DbName `
-            -SqlStatement $qry `
-            -OutputFileName $sourceOutFilename;
+    ExecuteQuery  -SqlServer $Source_SqlServer `
+        -Database $Source_DbName `
+        -SqlStatement $qry `
+        -OutputFileName $sourceOutFilename;
 
-        $targetOutFilename = "E:\Temp\$tableName.trg"
+    $targetOutFilename = "C:\Temp\$tableName.trg"
 
-        ExecuteQuery  -SqlServer $Target_SqlServer  `
-            -Database $Target_DbName `
-            -SqlStatement $qry `
-            -OutputFileName $targetOutFilename;
+    ExecuteQuery  -SqlServer $Target_SqlServer  `
+        -Database $Target_DbName `
+        -SqlStatement $qry `
+        -OutputFileName $targetOutFilename;
     
 }
 
 
 ##Compare objects 
-#Compare-Object -ReferenceObject $(Get-Content E:\Temp\HashKeyTest.src) -DifferenceObject $(Get-Content E:\temp\HashKeyTest.trg)
+#Compare-Object -ReferenceObject $(Get-Content C:\Temp\HashKeyTest.src) -DifferenceObject $(Get-Content C:\temp\HashKeyTest.trg)
+
+
+
+# Function Compare-ObjectProperties {
+#     Param(
+#         [PSObject]$ReferenceObject,
+#         [PSObject]$DifferenceObject,
+#         [Switch]$IncludeEqual
+#     )
+#     $objprops = $ReferenceObject | Get-Member -MemberType Property, NoteProperty | % Name
+#     $objprops += $DifferenceObject | Get-Member -MemberType Property, NoteProperty | % Name
+#     $objprops = $objprops | Sort | Select -Unique
+#     $diffs = @()
+#     foreach ($objprop in $objprops) {
+#         $diff = Compare-Object $ReferenceObject $DifferenceObject -Property $objprop
+#         if ($diff) {
+#             $diffprops = @{
+#                 PropertyName = $objprop
+#                 RefValue     = ($diff | ? { $_.SideIndicator -eq ”} | % $($objprop))
+#     DiffIndicator=”
+#                     }
+#                     $diffs += New-Object PSObject -Property $diffprops
+#                 }
+#                 elseif ($IncludeEqual) {
+#                     $diffprops = @{
+#                         PropertyName  = $objprop
+#                         RefValue      = $ReferenceObject.”$objprop”
+#                         DiffValue     = $DifferenceObject.”$objprop”
+#                         DiffIndicator = ’==’
+#                     }
+#                     $diffs += New-Object PSObject -Property $diffprops
+#                 }
+#             }
+#             if ($diffs) { return ($diffs | Select PropertyName, RefValue, DiffValue, DiffIndicator) }
+#         }
