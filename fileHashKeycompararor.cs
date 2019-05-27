@@ -2,7 +2,6 @@
 // This compares the contents of two files to find any records 
 // that are in one file but not in the other file.
 // Note that the order of the records in the files is immaterial.
-
 // A positive value in the integer part of the dictionary
 // signifies that the record is found in file A
 // A negative value means file B
